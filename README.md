@@ -3,6 +3,7 @@
 Step 1: Remake the logic of the game flow: 
 - Create 2 different scenes: StartScene and GameScene
 - Create start button in StartScene to load the GameScene
+- Create fish prefabs, cell prefab using UI Image
 Step 2: Create new game logic:
 - Create empty GameScene
 - Create a Canvas, set up the Canvas Inspector
