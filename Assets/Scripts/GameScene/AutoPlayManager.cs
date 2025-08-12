@@ -1,6 +1,8 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class AutoPlayManager : MonoBehaviour
 {
@@ -11,8 +13,9 @@ public class AutoPlayManager : MonoBehaviour
     public GameResultManager gameResultManager;
 
     [Header("Auto-Play Settings")]
-    public float fishCollectionDelay = 0.8f; // Delay between collecting fish
-    public float boardSwitchDelay = 1.5f; // Extra delay when switching boards
+    public float fishCollectionDelay = 0.8f;
+    public float boardSwitchDelay = 1.5f;
+    public float reloadDelay = 2.0f;
 
     private bool isAutoPlaying = false;
     private bool isAutoWin = false;
@@ -20,20 +23,14 @@ public class AutoPlayManager : MonoBehaviour
 
     void Start()
     {
-        // Check if we should start auto-play
+        AutoFindReferences();
+
         if (GameStartManager.isAutoPlay)
         {
             isAutoPlaying = true;
             isAutoWin = GameStartManager.isAutoWin;
-
-            Debug.Log($"Auto-Play Mode: {(isAutoWin ? "AUTO-WIN" : "AUTO-LOSE")}");
-
-            // Start auto-play after a short delay to let everything initialize
             StartCoroutine(StartAutoPlayDelayed());
         }
-
-        // Auto-find references if not assigned
-        AutoFindReferences();
     }
 
     void AutoFindReferences()
@@ -53,7 +50,7 @@ public class AutoPlayManager : MonoBehaviour
 
     IEnumerator StartAutoPlayDelayed()
     {
-        yield return new WaitForSeconds(1f); // Wait for initialization
+        yield return new WaitForSeconds(1f);
 
         if (isAutoWin)
         {
@@ -67,146 +64,151 @@ public class AutoPlayManager : MonoBehaviour
 
     IEnumerator AutoWinRoutine()
     {
-        Debug.Log("Starting Auto-Win routine...");
-
         while (!gameResultManager.IsGameEnded())
         {
-            // Wait for any ongoing animations to finish
             yield return new WaitUntil(() => !collectionManager.IsCollectionInProgress());
 
-            // Get the current active board
             string activeBoard = collectionManager.GetCurrentActiveBoard();
-
-            // Find a fish to collect on the current board
             FishController fishToCollect = FindBestFishForWin(activeBoard);
 
             if (fishToCollect != null)
             {
-                Debug.Log($"Auto-collecting {fishToCollect.name} for WIN strategy");
-
-                // Simulate clicking the fish
                 collectionManager.OnFishClicked(fishToCollect, activeBoard);
-
-                // Wait for collection animation
+                yield return new WaitUntil(() => !collectionManager.IsCollectionInProgress());
                 yield return new WaitForSeconds(fishCollectionDelay);
             }
             else
             {
-                Debug.LogWarning("No suitable fish found for auto-win!");
                 yield return new WaitForSeconds(0.5f);
             }
 
-            // Check if we completed a board
             if (collectionManager.GetRemainingFishCount(activeBoard) <= 0)
             {
-                Debug.Log($"Board {activeBoard} completed in auto-win mode");
                 yield return new WaitForSeconds(boardSwitchDelay);
             }
         }
 
-        Debug.Log("Auto-Win routine completed!");
+        yield return new WaitForSeconds(0.5f);
+
+        if (isAutoWin && !DidPlayerWin())
+        {
+            yield return new WaitForSeconds(reloadDelay);
+            ReloadGameScene();
+        }
+        else
+        {
+            isAutoPlaying = false;
+        }
     }
 
     IEnumerator AutoLoseRoutine()
     {
-        Debug.Log("Starting Auto-Lose routine...");
-
         while (!gameResultManager.IsGameEnded())
         {
-            // Wait for any ongoing animations to finish
             yield return new WaitUntil(() => !collectionManager.IsCollectionInProgress());
 
-            // Check if collection bar is almost full
+            string activeBoard = collectionManager.GetCurrentActiveBoard();
+
             if (collectionBar.GetCollectedCount() >= collectionBar.maxSlots - 1)
             {
-                // Collection bar is almost full, now we need to make sure we can't complete it
-                Debug.Log("Collection bar almost full - triggering lose condition");
-
-                // Try to collect one more fish that won't create a match of 3
-                string activeBoard = collectionManager.GetCurrentActiveBoard();
                 FishController fishToCollect = FindWorstFishForLose(activeBoard);
 
                 if (fishToCollect != null)
                 {
-                    Debug.Log($"Auto-collecting {fishToCollect.name} to trigger LOSE condition");
                     collectionManager.OnFishClicked(fishToCollect, activeBoard);
-                    yield return new WaitForSeconds(fishCollectionDelay);
-                }
-
-                break; // This should trigger the lose condition
-            }
-            else
-            {
-                // Collect fish normally but avoid creating matches when possible
-                string activeBoard = collectionManager.GetCurrentActiveBoard();
-                FishController fishToCollect = FindFishForLoseStrategy(activeBoard);
-
-                if (fishToCollect != null)
-                {
-                    Debug.Log($"Auto-collecting {fishToCollect.name} for LOSE strategy");
-                    collectionManager.OnFishClicked(fishToCollect, activeBoard);
+                    yield return new WaitUntil(() => !collectionManager.IsCollectionInProgress());
                     yield return new WaitForSeconds(fishCollectionDelay);
                 }
                 else
                 {
-                    Debug.LogWarning("No suitable fish found for auto-lose!");
+                    yield return new WaitForSeconds(0.5f);
+                }
+            }
+            else
+            {
+                FishController fishToCollect = FindFishForLoseStrategy(activeBoard);
+
+                if (fishToCollect != null)
+                {
+                    collectionManager.OnFishClicked(fishToCollect, activeBoard);
+                    yield return new WaitUntil(() => !collectionManager.IsCollectionInProgress());
+                    yield return new WaitForSeconds(fishCollectionDelay);
+                }
+                else
+                {
                     yield return new WaitForSeconds(0.5f);
                 }
             }
         }
 
-        Debug.Log("Auto-Lose routine completed!");
+        isAutoPlaying = false;
     }
 
     FishController FindBestFishForWin(string boardName)
     {
-        // For auto-win, prioritize fish that will create matches when possible
-        // This helps clear the collection bar and progress through the game
-
         List<FishController> availableFish = GetAvailableFishOnBoard(boardName);
-
         if (availableFish.Count == 0) return null;
 
-        // Simple strategy: just pick the first available fish
-        // The match-3 system will handle clearing matches automatically
-        return availableFish[0];
+        FishController bestMatch = FindFishThatCreatesMatch(availableFish);
+        if (bestMatch != null) return bestMatch;
+
+        FishController preferredType = FindFishOfExistingType(availableFish);
+        if (preferredType != null) return preferredType;
+
+        if (collectionBar.GetCollectedCount() >= collectionBar.maxSlots - 2)
+        {
+            FishController safeFish = FindSafestFish(availableFish);
+            if (safeFish != null) return safeFish;
+        }
+
+        return availableFish[Random.Range(0, availableFish.Count)];
+    }
+
+    FishController FindFishThatCreatesMatch(List<FishController> availableFish)
+    {
+        var fishTypeCounts = new Dictionary<int, int>();
+
+        foreach (var fish in availableFish)
+        {
+            if (!fishTypeCounts.ContainsKey(fish.fishType))
+                fishTypeCounts[fish.fishType] = 0;
+            fishTypeCounts[fish.fishType]++;
+        }
+
+        var sortedFish = availableFish.OrderByDescending(f => fishTypeCounts[f.fishType]).ToList();
+        return sortedFish.FirstOrDefault();
+    }
+
+    FishController FindFishOfExistingType(List<FishController> availableFish)
+    {
+        return null;
+    }
+
+    FishController FindSafestFish(List<FishController> availableFish)
+    {
+        return availableFish[Random.Range(0, availableFish.Count)];
     }
 
     FishController FindWorstFishForLose(string boardName)
     {
-        // For the final fish that will cause a loss, pick any fish
-        // since the collection bar will be full
-
         List<FishController> availableFish = GetAvailableFishOnBoard(boardName);
-
         if (availableFish.Count == 0) return null;
-
         return availableFish[0];
     }
 
     FishController FindFishForLoseStrategy(string boardName)
     {
-        // For auto-lose, try to avoid creating matches when the collection bar is getting full
-        // But still collect fish to fill up the bar
-
         List<FishController> availableFish = GetAvailableFishOnBoard(boardName);
-
         if (availableFish.Count == 0) return null;
-
-        // If collection bar has space, just pick any fish
-        // The key is to eventually fill it up without clearing all boards
         return availableFish[Random.Range(0, availableFish.Count)];
     }
 
     List<FishController> GetAvailableFishOnBoard(string boardName)
     {
         List<FishController> availableFish = new List<FishController>();
-
-        // Get board configuration
         BoardConfig config = boardGenerator.GetBoardConfig(boardName);
         if (config == null) return availableFish;
 
-        // Search through all positions on the board
         for (int x = 0; x < config.width; x++)
         {
             for (int y = 0; y < config.height; y++)
@@ -222,11 +224,30 @@ public class AutoPlayManager : MonoBehaviour
                 }
             }
         }
-
         return availableFish;
     }
 
-    // Public method to stop auto-play if needed
+    bool DidPlayerWin()
+    {
+        string[] boardOrder = { "Board_3", "Board_2", "Board_1" };
+
+        foreach (string boardName in boardOrder)
+        {
+            int remainingFish = collectionManager.GetRemainingFishCount(boardName);
+            if (remainingFish > 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    void ReloadGameScene()
+    {
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
     public void StopAutoPlay()
     {
         if (autoPlayCoroutine != null)
@@ -235,10 +256,8 @@ public class AutoPlayManager : MonoBehaviour
             autoPlayCoroutine = null;
         }
         isAutoPlaying = false;
-        Debug.Log("Auto-play stopped");
     }
 
-    // Check if auto-play is currently running
     public bool IsAutoPlaying()
     {
         return isAutoPlaying && !gameResultManager.IsGameEnded();

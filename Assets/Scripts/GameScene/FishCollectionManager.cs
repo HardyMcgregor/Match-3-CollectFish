@@ -7,7 +7,7 @@ public class FishCollectionManager : MonoBehaviour
     [Header("References")]
     public MultiBoardGenerator boardGenerator;
     public CollectionBar collectionBar;
-    public GameResultManager gameResultManager; // Add reference to the result manager
+    public GameResultManager gameResultManager;
 
     [Header("Animation Settings")]
     public float moveAnimationDuration = 0.5f;
@@ -25,7 +25,6 @@ public class FishCollectionManager : MonoBehaviour
         InitializeBoardCounts();
         SetupInitialBoardState();
 
-        // Auto-find GameResultManager if not assigned
         if (gameResultManager == null)
             gameResultManager = FindObjectOfType<GameResultManager>();
     }
@@ -49,25 +48,17 @@ public class FishCollectionManager : MonoBehaviour
             bool shouldShow = (boardName == currentActiveBoard);
             boardGenerator.SetBoardActive(boardName, shouldShow);
         }
-
-        Debug.Log($"Started with {currentActiveBoard} active. Fish count: {boardFishCount[currentActiveBoard]}");
     }
 
     public void OnFishClicked(FishController fish, string boardName)
     {
-        Debug.Log($"OnFishClicked called for {fish.name} on {boardName}");
-
-        // Prevent clicking during any animations (movement or destruction)
         if (boardName != currentActiveBoard || isAnimating || collectionBar.IsAnimating())
         {
-            Debug.Log("Cannot collect fish - animation in progress or wrong board");
             return;
         }
 
-        // Check if game has ended
         if (gameResultManager != null && gameResultManager.IsGameEnded())
         {
-            Debug.Log("Cannot collect fish - game has ended");
             return;
         }
 
@@ -75,21 +66,27 @@ public class FishCollectionManager : MonoBehaviour
         {
             StartCoroutine(MoveFishToCollection(fish, boardName));
         }
-        else
-        {
-            Debug.Log("Collection bar is full!");
-            // The GameResultManager will automatically detect this lose condition
-        }
     }
 
     System.Collections.IEnumerator MoveFishToCollection(FishController fish, string boardName)
     {
         isAnimating = true;
 
-        // Get the target slot
+        int fx = fish.x;
+        int fy = fish.y;
+        if (boardGenerator != null)
+        {
+            boardGenerator.SetFish(boardName, fx, fy, null);
+        }
+
+        FishClickHandler click = fish.GetComponent<FishClickHandler>();
+        if (click != null)
+            click.enabled = false;
+
+        fish.SetBoardName("Collected");
+
         Transform targetSlot = collectionBar.collectionSlots[collectionBar.GetCollectedCount()];
 
-        // Store original world positions for smooth movement
         Vector3 startWorldPos = fish.transform.position;
         Vector3 targetWorldPos = targetSlot.position;
 
@@ -99,20 +96,16 @@ public class FishCollectionManager : MonoBehaviour
             elapsed += Time.deltaTime;
             float t = moveCurve.Evaluate(elapsed / moveAnimationDuration);
 
-            // Move directly from start position to target slot position in world space
             fish.transform.position = Vector3.Lerp(startWorldPos, targetWorldPos, t);
             yield return null;
         }
 
-        // Ensure final position is exact
         fish.transform.position = targetWorldPos;
 
-        // Add to collection bar using existing method (pass the target slot)
         collectionBar.AddFish(fish, targetSlot);
 
         boardFishCount[boardName]--;
 
-        // Wait for any destruction animations to complete before proceeding
         while (collectionBar.IsAnimating())
         {
             yield return null;
@@ -126,8 +119,6 @@ public class FishCollectionManager : MonoBehaviour
 
     System.Collections.IEnumerator HandleBoardComplete(string completedBoard)
     {
-        Debug.Log($"{completedBoard} completed! Moving to next board.");
-
         boardGenerator.SetBoardActive(completedBoard, false);
         yield return new WaitForSeconds(0.3f);
 
@@ -140,11 +131,9 @@ public class FishCollectionManager : MonoBehaviour
                 bool shouldShow = (boardName == currentActiveBoard);
                 boardGenerator.SetBoardActive(boardName, shouldShow);
             }
-            Debug.Log($"Activated {currentActiveBoard}. Fish count: {boardFishCount[currentActiveBoard]}");
         }
         else
         {
-            Debug.Log("All boards completed! Game finished!");
             OnGameComplete();
         }
     }
@@ -161,10 +150,7 @@ public class FishCollectionManager : MonoBehaviour
 
     void OnGameComplete()
     {
-        Debug.Log("Congratulations! All fish collected!");
-
-        // The GameResultManager will automatically detect the win condition
-        // No need to manually trigger it here since it monitors the game state
+        // GameResultManager will automatically detect the win condition
     }
 
     public string GetCurrentActiveBoard()

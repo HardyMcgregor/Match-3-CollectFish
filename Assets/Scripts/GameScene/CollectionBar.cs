@@ -5,8 +5,8 @@ using UnityEngine;
 public class CollectionBar : MonoBehaviour
 {
     [Header("Collection Bar Settings")]
-    public Transform[] collectionSlots; // Assign your collection slots here
-    public int maxSlots = 5; // Maximum number of fish that can be collected (changed to 5)
+    public Transform[] collectionSlots;
+    public int maxSlots = 5;
 
     [Header("Animation Settings")]
     public float destructionAnimationDuration = 0.5f;
@@ -14,7 +14,7 @@ public class CollectionBar : MonoBehaviour
     public AnimationCurve fadeCurve = AnimationCurve.EaseInOut(0f, 1f, 1f, 0f);
 
     [Header("Visual Effects")]
-    public GameObject destructionParticlePrefab; // Optional particle effect
+    public GameObject destructionParticlePrefab;
     public Color flashColor = Color.white;
     public float flashDuration = 0.1f;
 
@@ -44,9 +44,6 @@ public class CollectionBar : MonoBehaviour
             fish.transform.SetParent(transform, false);
         }
 
-        Debug.Log($"Fish added to collection. Total: {collectedFish.Count}/{maxSlots}");
-
-        // Check for matches after adding
         StartCoroutine(CheckAndRemoveMatchesWithAnimation());
     }
 
@@ -58,9 +55,8 @@ public class CollectionBar : MonoBehaviour
             return collectionSlots[slotIndex].position;
         }
 
-        // Fallback: position next to last slot
         Vector3 basePos = collectionSlots[collectionSlots.Length - 1].position;
-        return basePos + Vector3.right * (slotIndex - collectionSlots.Length + 1) * 100f; // Adjust spacing as needed
+        return basePos + Vector3.right * (slotIndex - collectionSlots.Length + 1) * 100f;
     }
 
     public int GetCollectedCount()
@@ -109,7 +105,6 @@ public class CollectionBar : MonoBehaviour
                 int currentType = collectedFish[i].fishType;
                 int matchCount = 1;
 
-                // Count how many in a row have the same type
                 for (int j = i + 1; j < collectedFish.Count; j++)
                 {
                     if (collectedFish[j].fishType == currentType)
@@ -121,19 +116,15 @@ public class CollectionBar : MonoBehaviour
                 if (matchCount >= 3)
                 {
                     foundMatches = true;
-
-                    // Animate the destruction of matched fish
                     yield return StartCoroutine(AnimateMatchedFishDestruction(i, matchCount));
 
-                    // Remove destroyed fish from list
                     for (int k = 0; k < matchCount; k++)
                     {
                         collectedFish.RemoveAt(i);
                     }
 
-                    // Animate remaining fish sliding into new positions
                     yield return StartCoroutine(AnimateRepositioning());
-                    break; // Start over from beginning to check for new matches
+                    break;
                 }
 
                 i++;
@@ -147,7 +138,6 @@ public class CollectionBar : MonoBehaviour
     {
         List<FishController> fishesToDestroy = new List<FishController>();
 
-        // Collect fish to destroy
         for (int k = 0; k < matchCount; k++)
         {
             if (startIndex < collectedFish.Count)
@@ -156,20 +146,17 @@ public class CollectionBar : MonoBehaviour
             }
         }
 
-        // Start all animations simultaneously
         List<Coroutine> animations = new List<Coroutine>();
 
         for (int k = 0; k < fishesToDestroy.Count; k++)
         {
             if (fishesToDestroy[k] != null)
             {
-                // Small delay for cascade effect
                 float delay = k * 0.05f;
                 animations.Add(StartCoroutine(AnimateSingleFishDestruction(fishesToDestroy[k], delay)));
             }
         }
 
-        // Wait for all animations to complete
         foreach (Coroutine animation in animations)
         {
             yield return animation;
@@ -180,7 +167,6 @@ public class CollectionBar : MonoBehaviour
     {
         if (fish == null) yield break;
 
-        // Initial delay for cascade effect
         if (delay > 0)
         {
             yield return new WaitForSeconds(delay);
@@ -189,11 +175,9 @@ public class CollectionBar : MonoBehaviour
         GameObject fishObj = fish.gameObject;
         Vector3 originalScale = fishObj.transform.localScale;
 
-        // Get renderer components for fading
         SpriteRenderer[] spriteRenderers = fishObj.GetComponentsInChildren<SpriteRenderer>();
         UnityEngine.UI.Image[] images = fishObj.GetComponentsInChildren<UnityEngine.UI.Image>();
 
-        // Store original colors
         Color[] originalSpriteColors = new Color[spriteRenderers.Length];
         Color[] originalImageColors = new Color[images.Length];
 
@@ -206,31 +190,25 @@ public class CollectionBar : MonoBehaviour
             originalImageColors[i] = images[i].color;
         }
 
-        // Flash effect at start
         yield return StartCoroutine(FlashEffect(spriteRenderers, images));
 
-        // Spawn particle effect if available
         if (destructionParticlePrefab != null)
         {
             GameObject particles = Instantiate(destructionParticlePrefab, fishObj.transform.position, Quaternion.identity);
-            Destroy(particles, 2f); // Clean up particles after 2 seconds
+            Destroy(particles, 2f);
         }
 
-        // Main destruction animation
         float elapsed = 0f;
         while (elapsed < destructionAnimationDuration)
         {
             elapsed += Time.deltaTime;
             float normalizedTime = elapsed / destructionAnimationDuration;
 
-            // Scale animation
             float scaleValue = scaleCurve.Evaluate(normalizedTime);
             fishObj.transform.localScale = originalScale * scaleValue;
 
-            // Fade animation
             float fadeValue = fadeCurve.Evaluate(normalizedTime);
 
-            // Apply fade to sprite renderers
             for (int i = 0; i < spriteRenderers.Length; i++)
             {
                 if (spriteRenderers[i] != null)
@@ -241,7 +219,6 @@ public class CollectionBar : MonoBehaviour
                 }
             }
 
-            // Apply fade to UI images
             for (int i = 0; i < images.Length; i++)
             {
                 if (images[i] != null)
@@ -255,16 +232,12 @@ public class CollectionBar : MonoBehaviour
             yield return null;
         }
 
-        // Ensure fish is completely transparent and scaled to zero
         fishObj.transform.localScale = Vector3.zero;
-
-        // Destroy the fish
         Destroy(fishObj);
     }
 
     private IEnumerator FlashEffect(SpriteRenderer[] spriteRenderers, UnityEngine.UI.Image[] images)
     {
-        // Store original colors
         Color[] originalSpriteColors = new Color[spriteRenderers.Length];
         Color[] originalImageColors = new Color[images.Length];
 
@@ -281,7 +254,6 @@ public class CollectionBar : MonoBehaviour
 
         yield return new WaitForSeconds(flashDuration);
 
-        // Restore original colors
         for (int i = 0; i < spriteRenderers.Length; i++)
         {
             if (spriteRenderers[i] != null)
@@ -302,37 +274,31 @@ public class CollectionBar : MonoBehaviour
         List<Vector3> startPositions = new List<Vector3>();
         List<Vector3> targetPositions = new List<Vector3>();
 
-        // Record start positions and calculate target positions
         for (int idx = 0; idx < collectedFish.Count; idx++)
         {
             if (collectedFish[idx] != null)
             {
                 startPositions.Add(collectedFish[idx].transform.localPosition);
-
-                // Calculate target position in the correct slot
                 Transform targetSlot = collectionSlots[idx];
                 Vector3 targetPos = targetSlot.InverseTransformPoint(targetSlot.position);
-                targetPositions.Add(Vector3.zero); // Since we'll be parented to the slot
+                targetPositions.Add(Vector3.zero);
             }
         }
 
-        // Animate movement to new positions
         float elapsed = 0f;
         while (elapsed < repositionDuration)
         {
             elapsed += Time.deltaTime;
             float t = elapsed / repositionDuration;
-            t = Mathf.SmoothStep(0f, 1f, t); // Smooth interpolation
+            t = Mathf.SmoothStep(0f, 1f, t);
 
             for (int idx = 0; idx < collectedFish.Count && idx < startPositions.Count; idx++)
             {
                 if (collectedFish[idx] != null)
                 {
-                    // Move to new slot parent and position
                     Transform targetSlot = collectionSlots[idx];
                     collectedFish[idx].transform.SetParent(targetSlot, false);
 
-                    // Animate position
                     Vector3 currentPos = Vector3.Lerp(startPositions[idx], targetPositions[idx], t);
 
                     RectTransform rt = collectedFish[idx].transform as RectTransform;
@@ -346,7 +312,6 @@ public class CollectionBar : MonoBehaviour
             yield return null;
         }
 
-        // Ensure final positions are exact
         for (int idx = 0; idx < collectedFish.Count; idx++)
         {
             if (collectedFish[idx] != null)
@@ -361,7 +326,6 @@ public class CollectionBar : MonoBehaviour
         }
     }
 
-    // Legacy method kept for compatibility but now uses animated version
     public void CheckAndRemoveMatches()
     {
         StartCoroutine(CheckAndRemoveMatchesWithAnimation());

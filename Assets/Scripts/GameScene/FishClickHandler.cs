@@ -16,7 +16,6 @@ public class FishClickHandler : MonoBehaviour, IPointerClickHandler
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        Debug.Log($"Fish clicked: {fishController.name} on {boardName}");
         collectionManager?.OnFishClicked(fishController, boardName);
     }
 }
